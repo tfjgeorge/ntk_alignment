@@ -25,17 +25,17 @@ parser.add_argument('--diff', default=0., type=float, help='Proportion of diffic
 parser.add_argument('--diff-type', default='random', type=str, help='Type of difficult examples',
                     choices=['random', 'other'])
 
-parser.add_argument('--align-train', action='store_true')
-parser.add_argument('--align-test', action='store_true')
-parser.add_argument('--align-easy-diff', action='store_true')
-parser.add_argument('--layer-align-train', action='store_true')
-parser.add_argument('--layer-align-test', action='store_true')
-parser.add_argument('--complexity', action='store_true')
+parser.add_argument('--align-train', action='store_true', help='Compute alignment with train set')
+parser.add_argument('--align-test', action='store_true', help='Compute alignment with test set')
+parser.add_argument('--align-easy-diff', action='store_true', help='Compute alignment with easy and difficult samples (requires diff > 0)')
+parser.add_argument('--layer-align-train', action='store_true', help='Compute alignment with each layer separately (train set)')
+parser.add_argument('--layer-align-test', action='store_true', help='Compute alignment with each layer separately (test set)')
+parser.add_argument('--complexity', action='store_true', help='Compute trace(K) and norm(dw) in order to compute the complexity')
 
-parser.add_argument('--no-centering', action='store_true')
+parser.add_argument('--no-centering', action='store_true', help='Disable centering when computing kernels')
 
-parser.add_argument('--save-ntk-train', action='store_true')
-parser.add_argument('--save-ntk-test', action='store_true')
+parser.add_argument('--save-ntk-train', action='store_true', help='Save training set ntk')
+parser.add_argument('--save-ntk-test', action='store_true', help='Save test set ntk')
 
 parser.add_argument('--seed', default=1, type=int, help='Seed')
 parser.add_argument('--epochs', default=100, type=int, help='epochs')
@@ -128,9 +128,11 @@ def train(args, log, rae):
                         ntk_path = os.path.join(results_dir,'test_ntk_%.6d.pkl' % iterations)
                         torch.save(ntk, ntk_path)
                 if args.align_easy_diff:
-                    to_log['align_easy_train'], ntk = alignment(model, output_fn, dataloaders['micro_train_easy'],
+                    to_log['align_easy_train'], ntk = alignment(model, output_fn,
+                                                                dataloaders['micro_train_easy'],
                                                                 10, centering=not args.no_centering)
-                    to_log['align_diff_train'], ntk = alignment(model, output_fn, dataloaders['micro_train_diff'],
+                    to_log['align_diff_train'], ntk = alignment(model, output_fn,
+                                                                dataloaders['micro_train_diff'],
                                                                 10, centering=not args.no_centering)
                 if args.complexity:
                     w_after = PVector.from_model(model).clone().detach()
