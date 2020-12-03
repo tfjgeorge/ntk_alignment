@@ -12,9 +12,10 @@ cfg = {
 
 
 class VGG(nn.Module):
-    def __init__(self, vgg_name, bn=False, base=64):
+    def __init__(self, vgg_name, bn=False, base=0):
         super(VGG, self).__init__()
-        self.bn = bn
+        self.bn = bn 
+        base = base if base != 0 else 64
         self.base = base
         self.features = self._make_layers(cfg[vgg_name])
         self.classifier = nn.Linear(8 * base, 10)

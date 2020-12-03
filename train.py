@@ -5,17 +5,18 @@ import os
 import pandas as pd
 import torch.optim as optim
 import torch
-from alignment import alignment, layer_alignment
+from alignment import alignment, layer_alignment, compute_trK
 import numpy as np
+from nngeometry.object import PVector
 
 start_time = time.time()
 
 parser = argparse.ArgumentParser(description='Compute various NTK alignment quantities')
 
 parser.add_argument('--task', required=True, type=str, help='Task',
-                    choices=['mnist_mlp', 'cifar10_vgg19', 'cifar10_resmodel18'])
-parser.add_argument('--depth', default=0, type=int, help='modelwork depth (only works with MNIST MLP)')
-parser.add_argument('--width', default=0, type=int, help='modelwork width (MLP) or base for channels (VGG)')
+                    choices=['mnist_fc', 'cifar10_vgg19', 'cifar10_resnet18'])
+parser.add_argument('--depth', default=0, type=int, help='network depth (only works with MNIST MLP)')
+parser.add_argument('--width', default=0, type=int, help='network width (MLP) or base for channels (VGG)')
 
 parser.add_argument('--lr', default=0.1, type=float, help='Learning rate')
 parser.add_argument('--mom', default=0.9, type=float, help='Momentum')
@@ -64,7 +65,6 @@ class RunningAverageEstimator:
 
 rae = RunningAverageEstimator()
 
-
 def output_fn(x, t):
     return model(x)
 
@@ -74,7 +74,7 @@ def stopping_criterion(log):
         return True
     return False
 
-def compute_ntk(iterations):
+def do_compute_ntk(iterations):
     return iterations == 0 or iterations in 5 * (1.15 ** np.arange(300)).astype('int')
 
 # Training
@@ -84,6 +84,10 @@ def train(args, log, rae):
     correct = 0
     total = 0
     iterations = 0
+
+    if args.complexity:
+        w_before = PVector.from_model(model).clone().detach()
+
     for epoch in range(args.epochs):
         print('\nEpoch: %d' % epoch)
         for batch_idx, (inputs, targets) in enumerate(dataloaders['train']):
@@ -100,7 +104,7 @@ def train(args, log, rae):
             rae.update('train_loss', loss.item())
             rae.update('train_acc', acc.item())
 
-            if compute_ntk(iterations):
+            if do_compute_ntk(iterations):
                 to_log = pd.Series()
                 to_log['time'] = time.time() - start_time
                 if args.layer_align_train:
@@ -123,10 +127,22 @@ def train(args, log, rae):
                     if args.save_ntk_test:
                         ntk_path = os.path.join(results_dir,'test_ntk_%.6d.pkl' % iterations)
                         torch.save(ntk, ntk_path)
+                if args.align_easy_diff:
+                    to_log['align_easy_train'], ntk = alignment(model, output_fn, dataloaders['micro_train_easy'],
+                                                                10, centering=not args.no_centering)
+                    to_log['align_diff_train'], ntk = alignment(model, output_fn, dataloaders['micro_train_diff'],
+                                                                10, centering=not args.no_centering)
+                if args.complexity:
+                    w_after = PVector.from_model(model).clone().detach()
+                    to_log['norm_dw'] = torch.norm((w_after - w_before).get_flat_representation()).item()
+                    w_before = w_after
+                    to_log['trK'] = compute_trK(dataloaders['micro_train'], model, output_fn, 10)
+
                 to_log['iteration'] = iterations
                 to_log['epoch'] = epoch
                 to_log['train_acc'], to_log['train_loss'] = rae.get('train_acc'), rae.get('train_loss')
                 to_log['test_acc'], to_log['test_loss'] = test(dataloaders['mini_test'])
+
 
                 log.loc[len(log)] = to_log
                 print(log.loc[len(log) - 1])
@@ -178,6 +194,11 @@ if args.align_train or args.save_ntk_train:
     columns.append('align_train')
 if args.align_test or args.save_ntk_test:
     columns.append('align_test')
+if args.align_easy_diff:
+    columns.append('align_easy_train')
+    columns.append('align_diff_train')
+if args.complexity:
+    columns += ['trK', 'norm_dw']
 
 log = pd.DataFrame(columns=columns)
 train(args, log, rae)

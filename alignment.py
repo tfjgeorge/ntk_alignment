@@ -1,5 +1,7 @@
 from nngeometry.object.fspace import FMatDense
 from nngeometry.object.vector import FVector
+from nngeometry.object import PMatImplicit
+
 from nngeometry.generator import Jacobian
 from nngeometry.layercollection import LayerCollection
 import torch
@@ -56,3 +58,8 @@ def layer_alignment(model, output_fn, loader, n_output, centering=True):
         alignments.append(align.item())
 
     return alignments
+
+def compute_trK(align_dl, model, output_fn, n_output):
+    generator = Jacobian(model, align_dl, output_fn, n_output=n_output)
+    F = PMatImplicit(generator)
+    return F.trace().item() * len(align_dl)
